@@ -15,13 +15,21 @@ import re
 
 from .constants import SUPPORTED_FILE_EXTENSIONS
 
-def send_discord_webhook(webhook_url=None, video_url=None):
+def send_discord_webhook(webhook_url=None, video_url=None, video_info: VideoInfo=None):
     payload = {
         "content": video_url,
         "username": "Fireshare",
         "avatar_url": "https://github.com/ShaneIsrael/fireshare/raw/develop/app/client/src/assets/logo_square.png",
     }
-
+    if video_info is not None:
+        content = ""
+        if video_info.title:
+            content += f"[{video_info.title}]({video_url})"
+        else:
+            content += video_url
+        if video_info.description:
+            content += f"\n### {video_info.description}"
+        payload['content'] = content
     try:
         response = requests.post(webhook_url, json=payload)
         response.raise_for_status()
@@ -157,7 +165,8 @@ def scan_videos(root):
 @cli.command()
 @click.pass_context
 @click.option("--path", "-p", help="path to video to scan", required=False)
-def scan_video(ctx, path):
+@click.option("--metadata", "-m", help="title and/or description metadata formatted as json", required=False)
+def scan_video(ctx, path, metadata):
     with create_app().app_context():
         paths = current_app.config['PATHS']
         domain = current_app.config['DOMAIN']
@@ -178,6 +187,12 @@ def scan_video(ctx, path):
         
         if not video_links.is_dir():
             video_links.mkdir()
+
+        if metadata is None:
+            metadata = {}
+
+        if metadata:
+            metadata = json.loads(metadata)
         
         CHUNK_FILE_PATTERN = re.compile(r'\.part\d{4}$')
         video_file = ((videos_path / path) if (videos_path / path).is_file() 
@@ -202,6 +217,14 @@ def scan_video(ctx, path):
                     updated_at = datetime.fromtimestamp(os.path.getmtime(f"{videos_path}/{path}"))
                     logger.info(f"Updating Video {video_id}, updated_at={updated_at}")
                     db.session.query(Video).filter_by(video_id=existing.video_id).update({ "updated_at": updated_at })
+                if metadata:
+                    update_dict = {}
+                    if metadata.get('title', None):
+                        update_dict.update(title=metadata['title'])
+                    if metadata.get('description', None):
+                        update_dict.update(description=metadata['description'])
+                    logger.info(f"Updating VideoInfo {video_id}, " + ', '.join([f'{key}="{value}"' for key, value in update_dict.items()]))
+                    db.session.query(VideoInfo).filter_by(video_id=existing.video_id).update(update_dict)
             else:
                 created_at = datetime.fromtimestamp(os.path.getctime(f"{videos_path}/{path}"))
                 updated_at = datetime.fromtimestamp(os.path.getmtime(f"{videos_path}/{path}"))
@@ -221,7 +244,13 @@ def scan_video(ctx, path):
                         os.symlink(src, dst, dir_fd=fd)
                     except FileExistsError:
                         logger.info(f"{dst} exists already")
-                info = VideoInfo(video_id=v.video_id, title=Path(v.path).stem, private=video_config["private"])
+
+                info = VideoInfo(
+                    video_id=v.video_id,
+                    title=metadata.get('title', Path(v.path).stem),
+                    description=metadata.get('description', None),
+                    private=video_config["private"]
+                )
                 db.session.add(info)
                 db.session.commit()
 
@@ -249,7 +278,7 @@ def scan_video(ctx, path):
                     if discord_webhook_url:
                         logger.info(f"Posting to Discord webhook")
                         video_url = get_public_watch_url(video_id, config, domain)
-                        send_discord_webhook(webhook_url=discord_webhook_url, video_url=video_url)
+                        send_discord_webhook(webhook_url=discord_webhook_url, video_url=video_url, video_info=info)
                 else:
                     logger.warn(f"Skipping creation of poster for video {info.video_id} because the video at {str(video_path)} does not exist or is not accessible")
         else:

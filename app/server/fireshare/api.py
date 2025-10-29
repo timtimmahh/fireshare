@@ -13,7 +13,7 @@ from pathlib import Path
 import time
 
 
-from . import db
+from . import db, logger
 from .models import Video, VideoInfo, VideoView
 from .constants import SUPPORTED_FILE_TYPES
 
@@ -367,6 +367,13 @@ def upload_video():
         configfile.close()
     
     upload_folder = config['app_config']['admin_upload_folder_name']
+    metadata = None
+    try:
+        metadata = json.dumps(request.form)
+        # logger.info(f'Form Data:\n{json.dumps(request.form, indent=2)}')
+    except Exception as e:
+        pass
+        # logger.warning(f'Unable to output form data: {e}')
 
     if 'file' not in request.files:
         return Response(status=400)
@@ -386,7 +393,8 @@ def upload_video():
         uid = ''.join(random.choice(string.ascii_lowercase + string.digits) for _ in range(6))
         save_path = os.path.join(paths['video'], upload_folder, f"{name_no_type}-{uid}.{filetype}")
     file.save(save_path)
-    Popen(f"fireshare scan-video --path=\"{save_path}\"", shell=True)
+    metadata_arg = f" --metadata='{metadata}'" if metadata else ''
+    Popen(f"fireshare scan-video --path=\"{save_path}\"{metadata_arg}", shell=True)
     return Response(status=201)
 
 @api.route('/api/uploadChunked', methods=['POST'])
