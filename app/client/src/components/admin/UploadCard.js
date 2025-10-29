@@ -10,8 +10,10 @@ const Input = styled('input')({
 })
 
 const numberFormat = new Intl.NumberFormat('en-US')
+const fileQueue = []
 
 const UploadCard = ({ authenticated, feedView = false, publicUpload = false, fetchVideos, cardWidth, handleAlert }) => {
+  console.log('Created UploadCard')
   const cardHeight = cardWidth / 1.77 + 32
   const [selectedFile, setSelectedFile] = React.useState()
   const [isSelected, setIsSelected] = React.useState(false)
@@ -21,8 +23,17 @@ const UploadCard = ({ authenticated, feedView = false, publicUpload = false, fet
   const uiConfig = getSetting('ui_config')
 
   const changeHandler = (event) => {
+    console.log(event.target.files)
+    const files = Array.from(event.target.files)
+    console.log(files)
+    fileQueue.splice(fileQueue.length, 0, ...files)
+    targetFileChanged()
+  }
+
+  const targetFileChanged = () => {
     setProgress(0)
-    setSelectedFile(event.target.files[0])
+    setSelectedFile(fileQueue[0])
+    fileQueue.splice(0, 1)
     setIsSelected(true)
   }
 
@@ -80,7 +91,11 @@ const UploadCard = ({ authenticated, feedView = false, publicUpload = false, fet
           message: 'Your upload will be available in a few seconds.',
           autohideDuration: 3500,
           open: true,
-          onClose: () => fetchVideos(),
+          onClose: () => {
+            if (fileQueue.length === 0) {
+              fetchVideos()
+            }
+          },
         })
       } catch (err) {
         handleAlert({
@@ -89,9 +104,15 @@ const UploadCard = ({ authenticated, feedView = false, publicUpload = false, fet
           open: true,
         })
       }
-      setProgress(0)
-      setUploadRate(null)
-      setIsSelected(false)
+      if (fileQueue.length > 0) {
+        console.log('Uploading next file')
+        targetFileChanged()
+      } else {
+        console.log('No more videos')
+        setProgress(0)
+        setUploadRate(null)
+        setIsSelected(false)
+      }
     }
 
     async function uploadChunked() {
@@ -184,6 +205,7 @@ const UploadCard = ({ authenticated, feedView = false, publicUpload = false, fet
                   type="file"
                   name="file"
                   onChange={changeHandler}
+                  multiple
                 />
               )}
               <CloudUploadIcon sx={{ fontSize: 75 }} />
