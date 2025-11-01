@@ -1,5 +1,6 @@
 import json
 import os, re, string
+import shlex
 import shutil
 import random
 import logging
@@ -393,7 +394,7 @@ def upload_video():
         uid = ''.join(random.choice(string.ascii_lowercase + string.digits) for _ in range(6))
         save_path = os.path.join(paths['video'], upload_folder, f"{name_no_type}-{uid}.{filetype}")
     file.save(save_path)
-    metadata_arg = f" --metadata='{metadata}'" if metadata else ''
+    metadata_arg = f" --metadata={shlex.quote(metadata)}" if metadata else ''
     Popen(f"fireshare scan-video --path=\"{save_path}\"{metadata_arg}", shell=True)
     return Response(status=201)
 
